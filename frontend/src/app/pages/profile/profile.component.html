@@ -1,0 +1,197 @@
+<div class="profile-container">
+  <!-- Header -->
+  <header class="profile-header">
+    <button class="back-btn" (click)="goBack()">← Back</button>
+    <h1>User Profile</h1>
+    <div style="width: 80px"></div>
+  </header>
+
+  <div class="profile-content" *ngIf="!loading; else loadingTemplate">
+    <div class="profile-card" *ngIf="user; else notFoundTemplate">
+      <!-- Avatar Section -->
+      <div class="avatar-section">
+        <div
+          class="avatar-large"
+          (mouseenter)="isOwnProfile && (showUploadOverlay = true)"
+          (mouseleave)="showUploadOverlay = false"
+        >
+          <!-- Current Avatar -->
+          <div class="avatar-container" [class.uploading]="uploading">
+            <img
+              *ngIf="user.avatar && !uploading; else defaultAvatar"
+              [src]="user.avatar"
+              [alt]="user.name"
+              (error)="handleImageError($event)"
+            />
+
+            <!-- Default Avatar Placeholder -->
+            <ng-template #defaultAvatar>
+              <div class="avatar-placeholder">
+                {{ user.name.charAt(0) | uppercase }}
+              </div>
+            </ng-template>
+          </div>
+
+          <!-- Upload Overlay (only for own profile) -->
+          <div
+            *ngIf="isOwnProfile && showUploadOverlay && !uploading"
+            class="upload-overlay"
+            (click)="triggerFileInput()"
+          >
+            <span class="upload-icon">📷</span>
+            <span class="upload-text">Change Photo</span>
+          </div>
+
+          <!-- Upload Progress -->
+          <div *ngIf="uploading" class="upload-progress">
+            <div class="progress-spinner"></div>
+            <span class="progress-text">Uploading...</span>
+          </div>
+        </div>
+
+        <!-- Hidden File Input -->
+        <input
+          #fileInput
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          style="display: none"
+          (change)="onFileSelected($event)"
+        />
+
+        <!-- Upload Status Messages -->
+        <div *ngIf="uploadSuccess" class="upload-success-message">
+          ✅ Avatar updated successfully!
+        </div>
+
+        <div *ngIf="uploadError" class="upload-error-message">❌ {{ uploadError }}</div>
+
+        <!-- Change Photo Button (always visible for own profile) -->
+        <button
+          *ngIf="isOwnProfile && !uploading"
+          class="change-photo-btn"
+          (click)="triggerFileInput()"
+        >
+          📷 Change Profile Photo
+        </button>
+      </div>
+
+      <!-- User Info -->
+      <div class="info-section">
+        <h2>{{ user.name }}</h2>
+        <div class="info-item">
+          <span class="info-label">Email</span>
+          <span class="info-value">{{ user.email }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Member since</span>
+          <span class="info-value">{{ user.createdAt | date: 'longDate' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Last updated</span>
+          <span class="info-value">{{ user.updatedAt | date: 'longDate' }}</span>
+        </div>
+      </div>
+
+      <!-- Stats Section -->
+      <div class="stats-section">
+        <h3>Activity Stats</h3>
+
+        <!-- Stats Loading State -->
+        <div *ngIf="loadingStats" class="stats-loading">
+          <div class="stats-spinner"></div>
+          <p>Loading stats...</p>
+        </div>
+
+        <!-- Stats Grid -->
+        <div *ngIf="!loadingStats && userStats" class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">{{ userStats.roomsCreated }}</div>
+            <div class="stat-label">Rooms Created</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">{{ userStats.roomsJoined }}</div>
+            <div class="stat-label">Rooms Joined</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">{{ userStats.totalMessages }}</div>
+            <div class="stat-label">Messages</div>
+          </div>
+        </div>
+
+        <!-- Messages by Room (if available) -->
+        <div *ngIf="!loadingStats && userStats?.messagesByRoom?.length" class="room-stats">
+          <h4>Messages by Room</h4>
+          <div class="room-list">
+            <!-- Fixed: Check userStats exists first -->
+            <ng-container *ngIf="userStats">
+              <div *ngFor="let room of userStats.messagesByRoom" class="room-stat-item">
+                <div class="room-header">
+                  <span class="room-name">{{ room.roomName }}</span>
+                  <span class="message-count"
+                    >{{ room.count }} message{{ room.count !== 1 ? 's' : '' }}</span
+                  >
+                </div>
+                <div class="progress-bar">
+                  <!-- Fixed: Check totalMessages exists -->
+                  <ng-container *ngIf="userStats.totalMessages">
+                    <div
+                      class="progress-fill"
+                      [style.width.%]="(room.count / userStats.totalMessages) * 100"
+                      [attr.aria-valuenow]="(room.count / userStats.totalMessages) * 100"
+                      role="progressbar"
+                    ></div>
+                  </ng-container>
+                </div>
+              </div>
+            </ng-container>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div *ngIf="!loadingStats && userStats?.recentActivity?.length" class="recent-activity">
+          <h4>Recent Activity</h4>
+          <div class="activity-list">
+            <!-- Fixed: Check userStats exists first -->
+            <ng-container *ngIf="userStats">
+              <div *ngFor="let activity of userStats.recentActivity" class="activity-item">
+                <span class="activity-icon">
+                  {{ activity.type === 'message' ? '💬' : '📁' }}
+                </span>
+                <span class="activity-details">{{ activity.details }}</span>
+                <span class="activity-time">{{ activity.timestamp | date: 'short' }}</span>
+              </div>
+            </ng-container>
+          </div>
+        </div>
+
+        <!-- No Stats State -->
+        <div *ngIf="!loadingStats && !userStats" class="no-stats">
+          <p>No activity stats available yet.</p>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-buttons">
+        <button class="message-btn" (click)="sendMessage()">💬 Send Message</button>
+        <button class="rooms-btn" (click)="viewRooms()">📁 View Rooms</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Template -->
+  <ng-template #loadingTemplate>
+    <div class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading profile...</p>
+    </div>
+  </ng-template>
+
+  <!-- Not Found Template -->
+  <ng-template #notFoundTemplate>
+    <div class="not-found">
+      <h2>User Not Found</h2>
+      <p>The user you're looking for doesn't exist.</p>
+      <button class="back-btn" (click)="goBack()">Go Back</button>
+    </div>
+  </ng-template>
+</div>

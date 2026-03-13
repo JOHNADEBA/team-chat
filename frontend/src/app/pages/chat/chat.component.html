@@ -1,0 +1,234 @@
+<div class="chat-container">
+  <!-- Header -->
+  <header class="chat-header">
+    <div class="header-content">
+      <div class="header-left">
+        <button class="back-btn" (click)="goBack()">
+          <span class="back-icon">←</span>
+          <span class="back-text">Back</span>
+        </button>
+        <h1>{{ room?.name || 'Chat' }}</h1>
+        <span class="member-count" *ngIf="room?.members">
+          {{ room!.members!.length }}
+        </span>
+      </div>
+
+      <!-- Desktop Navigation -->
+      <div class="desktop-nav">
+        <button class="profile-btn" (click)="goToProfile()" title="View your profile">
+          <span class="btn-icon">👤</span>
+          <span class="btn-text">Profile</span>
+        </button>
+
+        <button class="members-btn" (click)="showMembersModal = true" *ngIf="room">
+          <span class="btn-icon">👥</span>
+          <span class="btn-text">Members</span>
+        </button>
+
+        <button class="sign-out-btn" (click)="logout()">
+          <span class="btn-icon">🚪</span>
+          <span class="btn-text">Sign Out</span>
+        </button>
+      </div>
+
+      <!-- Mobile Menu Button -->
+      <button class="mobile-menu-btn" (click)="toggleMobileMenu()" *ngIf="!showMobileMenu">
+        <span class="menu-icon">☰</span>
+      </button>
+
+      <button class="mobile-menu-btn close-btn" (click)="toggleMobileMenu()" *ngIf="showMobileMenu">
+        <span class="menu-icon">✕</span>
+      </button>
+    </div>
+
+    <!-- Mobile Navigation -->
+    <div class="mobile-nav" *ngIf="showMobileMenu">
+      <button class="mobile-nav-item profile-btn" (click)="goToProfile(); closeMobileMenu()">
+        <span class="nav-icon">👤</span>
+        <span class="nav-text">Profile</span>
+      </button>
+
+      <button
+        class="mobile-nav-item members-btn"
+        (click)="showMembersModal = true; closeMobileMenu()"
+        *ngIf="room"
+      >
+        <span class="nav-icon">👥</span>
+        <span class="nav-text">Members</span>
+      </button>
+
+      <button class="mobile-nav-item sign-out-btn" (click)="logout(); closeMobileMenu()">
+        <span class="nav-icon">🚪</span>
+        <span class="nav-text">Sign Out</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Messages Container - Add (scroll)="onScroll()" -->
+  <div class="messages-container" #messageContainer (scroll)="onScroll()">
+    <!-- Loading State -->
+    <div *ngIf="loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading messages...</p>
+    </div>
+
+    <!-- Messages List -->
+    <div *ngIf="!loading" class="messages-list">
+      <div
+        *ngFor="let message of messages"
+        class="message-wrapper"
+        [class.own-message]="message.userId === currentUserId"
+      >
+        <div class="message-bubble">
+          <div *ngIf="message.userId !== currentUserId" class="message-sender">
+            <ng-container *ngIf="message.user; else unknownUser">
+              {{ message.user.name }}
+            </ng-container>
+            <ng-template #unknownUser> Unknown User </ng-template>
+
+            <span class="message-email" *ngIf="message.user">
+              {{ message.user.email }}
+            </span>
+          </div>
+          <div class="message-content">{{ message.content }}</div>
+          <div class="message-time">
+            {{ message.createdAt | date: 'short' }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div *ngIf="messages.length === 0" class="empty-messages">
+        <p>No messages yet. Start the conversation!</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Message Input -->
+  <div class="input-container">
+    <form (ngSubmit)="sendMessage()" class="input-form">
+      <input
+        type="text"
+        [(ngModel)]="newMessage"
+        name="message"
+        placeholder="Type your message..."
+        autocomplete="off"
+        [disabled]="sending"
+        (keydown.enter)="sendMessage()"
+      />
+      <button type="submit" [disabled]="!newMessage.trim() || sending" class="send-btn">
+        <span *ngIf="sending" class="sending-spinner">⚡</span>
+        {{ sending ? 'Sending...' : 'Send' }}
+      </button>
+    </form>
+  </div>
+
+  <!-- Members Modal -->
+  <div *ngIf="showMembersModal" class="modal-overlay" (click)="showMembersModal = false">
+    <div class="modal-content members-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Room Members ({{ room?.members?.length || 0 }})</h3>
+        <button class="close-btn" (click)="showMembersModal = false">✕</button>
+      </div>
+
+      <div class="members-list">
+        <div *ngFor="let member of room?.members || []" class="member-item">
+          <div class="member-avatar">
+            <!-- Fixed: Check member.user exists -->
+            <ng-container *ngIf="member.user; else defaultAvatar">
+              {{ member.user.name.charAt(0) | uppercase }}
+            </ng-container>
+            <ng-template #defaultAvatar> ? </ng-template>
+          </div>
+          <div class="member-info">
+            <div class="member-name">
+              <!-- Fixed: Check member.user exists -->
+              <ng-container *ngIf="member.user; else unknownName">
+                {{ member.user.name }}
+              </ng-container>
+              <ng-template #unknownName> Unknown User </ng-template>
+              <span *ngIf="member.userId === room?.createdById" class="creator-badge">Creator</span>
+            </div>
+            <!-- Fixed: Check member.user exists -->
+            <div class="member-email" *ngIf="member.user">
+              {{ member.user.email || 'No email' }}
+            </div>
+          </div>
+          <div class="member-joined">Joined {{ member.joinedAt | date: 'shortDate' }}</div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="secondary-btn" (click)="showMembersModal = false">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Members Modal -->
+  <div *ngIf="showAddMembersModal" class="modal-overlay" (click)="showAddMembersModal = false">
+    <div class="modal-content wide" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Add Members to Room</h3>
+        <button class="close-btn" (click)="showAddMembersModal = false">✕</button>
+      </div>
+
+      <!-- Search Input -->
+      <div class="search-box">
+        <input
+          type="text"
+          [(ngModel)]="userSearchQuery"
+          placeholder="Search users by name or email..."
+          (input)="onSearchInput()"
+          autofocus
+        />
+        <span *ngIf="searching" class="search-spinner">⚡</span>
+      </div>
+
+      <!-- Search Results -->
+      <div class="search-results-container">
+        <div *ngIf="searching" class="loading-small">
+          <div class="spinner-tiny"></div>
+          <p>Searching...</p>
+        </div>
+
+        <div
+          *ngIf="!searching && searchResults.length === 0 && userSearchQuery.length >= 2"
+          class="no-results"
+        >
+          No users found matching "{{ userSearchQuery }}"
+        </div>
+
+        <div
+          *ngIf="!searching && searchResults.length === 0 && userSearchQuery.length < 2"
+          class="no-results"
+        >
+          Type at least 2 characters to search
+        </div>
+
+        <div *ngFor="let user of searchResults" class="user-item">
+          <div class="user-info">
+            <div class="user-avatar">{{ user.name.charAt(0) | uppercase }}</div>
+            <div class="user-details">
+              <div class="user-name">{{ user.name }}</div>
+              <div class="user-email">{{ user.email }}</div>
+            </div>
+          </div>
+
+          <button
+            class="add-btn"
+            [class.added]="isUserInRoom(user.id)"
+            [disabled]="isUserInRoom(user.id) || addingUser === user.id"
+            (click)="addUserToRoom(user.id)"
+          >
+            <span *ngIf="addingUser === user.id" class="spinner-small">⚡</span>
+            {{ isUserInRoom(user.id) ? 'Already in room' : 'Add to Room' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="secondary-btn" (click)="showAddMembersModal = false">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

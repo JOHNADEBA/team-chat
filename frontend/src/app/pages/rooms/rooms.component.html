@@ -1,0 +1,295 @@
+<div class="min-h-screen">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-content max-w-7xl">
+      <!-- Logo/Brand -->
+      <div class="logo-area">
+        <h1>Team Chat</h1>
+      </div>
+
+      <!-- Desktop Navigation -->
+      <div class="desktop-nav">
+        <button class="profile-btn" (click)="goToProfile()" title="View your profile">
+          <span class="profile-icon">👤</span>
+          <span class="profile-text">Profile</span>
+        </button>
+
+        <button class="find-users-btn" (click)="openFindUsersModal()">
+          <span class="btn-icon">🔍</span>
+          <span class="btn-text">Find Users</span>
+        </button>
+
+        <button class="sign-out-btn" (click)="logout()">
+          <span class="btn-icon">🚪</span>
+          <span class="btn-text">Sign Out</span>
+        </button>
+      </div>
+
+      <!-- Mobile Menu Button -->
+      <button class="mobile-menu-btn" (click)="toggleMobileMenu()" *ngIf="!showMobileMenu">
+        <span class="menu-icon">☰</span>
+      </button>
+
+      <button class="mobile-menu-btn close-btn" (click)="toggleMobileMenu()" *ngIf="showMobileMenu">
+        <span class="menu-icon">✕</span>
+      </button>
+    </div>
+
+    <!-- Mobile Navigation Dropdown -->
+    <div class="mobile-nav" *ngIf="showMobileMenu">
+      <button class="mobile-nav-item profile-btn" (click)="goToProfile(); closeMobileMenu()">
+        <span class="nav-icon">👤</span>
+        <span class="nav-text">Profile</span>
+      </button>
+
+      <button
+        class="mobile-nav-item find-users-btn"
+        (click)="openFindUsersModal(); closeMobileMenu()"
+      >
+        <span class="nav-icon">🔍</span>
+        <span class="nav-text">Find Users</span>
+      </button>
+
+      <button class="mobile-nav-item sign-out-btn" (click)="logout(); closeMobileMenu()">
+        <span class="nav-icon">🚪</span>
+        <span class="nav-text">Sign Out</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="main-content max-w-7xl">
+    <!-- Create Room Button -->
+    <div class="create-room-btn">
+      <button (click)="openCreateModal()">+ New Room</button>
+    </div>
+
+    <!-- Create Room Modal -->
+    <div *ngIf="showCreateRoom" class="modal-overlay" (click)="closeCreateModal()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <h3>Create New Room</h3>
+
+        <div class="form-group">
+          <label>Room name</label>
+          <input
+            type="text"
+            [(ngModel)]="newRoomName"
+            placeholder="Enter room name"
+            [class.error]="createError"
+            (input)="createError = ''"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Description (optional)</label>
+          <textarea
+            [(ngModel)]="newRoomDescription"
+            placeholder="Enter room description"
+            rows="3"
+          ></textarea>
+        </div>
+
+        <div *ngIf="createError" class="error-text">
+          {{ createError }}
+        </div>
+
+        <div class="modal-actions">
+          <button
+            class="primary-btn"
+            (click)="createRoom()"
+            [disabled]="!newRoomName.trim() || isCreating"
+          >
+            <span *ngIf="isCreating" class="spinner-small">⚡</span>
+            {{ isCreating ? 'Creating...' : 'Create' }}
+          </button>
+          <button class="secondary-btn" (click)="closeCreateModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Find Users Modal -->
+    <div *ngIf="showFindUsers" class="modal-overlay" (click)="closeFindUsersModal()">
+      <div class="modal-content wide" (click)="$event.stopPropagation()">
+        <h3>Find Users</h3>
+
+        <!-- Search Input -->
+        <div class="search-box">
+          <input
+            type="text"
+            [(ngModel)]="userSearchQuery"
+            placeholder="Search by name or email..."
+            (input)="onSearchInput()"
+            autofocus
+          />
+          <span *ngIf="searching" class="search-spinner">⚡</span>
+        </div>
+
+        <!-- Search Results -->
+        <div class="search-results-container">
+          <!-- Loading State -->
+          <div *ngIf="searching" class="loading-small">
+            <div class="spinner-tiny"></div>
+            <p>Searching...</p>
+          </div>
+
+          <!-- No Results -->
+          <div
+            *ngIf="!searching && searchResults.length === 0 && userSearchQuery.length >= 2"
+            class="no-results"
+          >
+            <p>No users found matching "{{ userSearchQuery }}"</p>
+          </div>
+
+          <!-- Initial State -->
+          <div
+            *ngIf="!searching && searchResults.length === 0 && userSearchQuery.length < 2"
+            class="no-results"
+          >
+            <p>Type at least 2 characters to search for users</p>
+          </div>
+
+          <!-- Results List -->
+          <div *ngIf="!searching && searchResults.length > 0" class="results-list">
+            <div *ngFor="let user of searchResults" class="user-item">
+              <div class="user-info">
+                <div class="user-avatar">
+                  {{ user.name.charAt(0) | uppercase }}
+                </div>
+                <div class="user-details">
+                  <div class="user-name">{{ user.name }}</div>
+                  <div class="user-email">{{ user.email }}</div>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="user-actions">
+                <!-- Add to Room Button (if room selected) -->
+                <button
+                  *ngIf="selectedRoomId"
+                  class="action-btn add-btn"
+                  [class.added]="isUserInRoom(user.id, selectedRoomId)"
+                  [disabled]="isUserInRoom(user.id, selectedRoomId) || addingUser === user.id"
+                  (click)="addUserToRoom(user.id)"
+                >
+                  <span *ngIf="addingUser === user.id" class="spinner-small">⚡</span>
+                  {{ isUserInRoom(user.id, selectedRoomId) ? 'Added' : 'Add to Room' }}
+                </button>
+
+                <!-- For current user (self) -->
+                <ng-container *ngIf="user.id === currentUserId; else otherUserActions">
+                  <button class="action-btn edit-profile-btn" (click)="editProfile()">
+                    ✏️ Edit Profile
+                  </button>
+                </ng-container>
+
+                <!-- For other users -->
+                <ng-template #otherUserActions>
+                  <button class="action-btn view-btn" (click)="viewUserProfile(user)">
+                    View Profile
+                  </button>
+                  <button class="action-btn message-btn" (click)="createDirectChat(user)">
+                    Message
+                  </button>
+                </ng-template>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="secondary-btn" (click)="closeFindUsersModal()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div *ngIf="loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading rooms...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div *ngIf="!loading && rooms.length === 0" class="empty-state">
+      <p>No rooms yet. Create your first room to start chatting!</p>
+    </div>
+
+    <!-- Rooms Grid -->
+    <div class="rooms-grid" *ngIf="!loading && rooms.length > 0">
+      <div
+        *ngFor="let room of rooms"
+        class="room-card"
+        [class.creator-view]="room.createdById === currentUserId"
+      >
+        <div class="room-card-content" (click)="selectRoom(room.id)">
+          <h3>{{ room.name }}</h3>
+          <p class="description">{{ room.description || 'No description' }}</p>
+
+          <!-- Member Avatars -->
+          <div class="member-avatars" *ngIf="room.members && room.members.length > 0">
+            <div class="avatar-group">
+              <div
+                *ngFor="let member of room.members.slice(0, 3)"
+                class="avatar"
+                [title]="member.user.name"
+              >
+                {{ member.user.name.charAt(0) | uppercase }}
+              </div>
+              <div *ngIf="room.members.length > 3" class="avatar more">
+                +{{ room.members.length - 3 }}
+              </div>
+            </div>
+            <span class="member-count"
+              >{{ room.members.length }} member{{ room.members.length !== 1 ? 's' : '' }}</span
+            >
+          </div>
+
+          <div class="room-meta">
+            <span>Created by {{ room.createdBy?.name || 'Unknown' }}</span>
+            <span
+              >{{ room.messages?.length || 0 }} message{{
+                (room.messages?.length || 0) !== 1 ? 's' : ''
+              }}</span
+            >
+          </div>
+        </div>
+
+        <!-- Room Actions (if creator) -->
+        <div *ngIf="room.createdById === currentUserId" class="room-actions">
+          <button class="add-member-btn" (click)="openAddMemberModal(room.id)" title="Add members">
+            ➕
+          </button>
+          <button class="delete-room-btn" (click)="confirmDeleteRoom(room)" title="Delete room">
+            <span class="delete-icon">🗑️</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div *ngIf="showDeleteModal" class="modal-overlay" (click)="closeDeleteModal()">
+  <div class="modal-content delete-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Delete Room</h3>
+      <button class="close-btn" (click)="closeDeleteModal()">✕</button>
+    </div>
+
+    <div class="delete-content">
+      <div class="delete-icon">⚠️</div>
+      <p class="delete-message">
+        Are you sure you want to delete <strong>"{{ roomToDelete?.name }}"</strong>?
+      </p>
+      <p class="delete-warning">
+        This action cannot be undone. All messages and members will be permanently removed.
+      </p>
+    </div>
+
+    <div class="modal-actions">
+      <button class="secondary-btn" (click)="closeDeleteModal()">Cancel</button>
+      <button class="delete-btn" (click)="deleteRoom()" [disabled]="deleting">
+        <span *ngIf="deleting" class="spinner-small">⚡</span>
+        {{ deleting ? 'Deleting...' : 'Delete Room' }}
+      </button>
+    </div>
+  </div>
+</div>
