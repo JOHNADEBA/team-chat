@@ -34,33 +34,16 @@ app.use(
 );
 app.use(express.json());
 
-// Serve static files from uploads directory
+// Serve static files from uploads directory (if needed)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// Serve Angular static files in production
-if (process.env.NODE_ENV === "production") {
-  // FIX: Koyeb expects the public directory differently
-  const angularDistPath = path.join(__dirname, "../public"); // or "../dist/browser"
-
-  // Check if directory exists before serving (optional)
-  app.use(express.static(angularDistPath));
-
-  // All non-API routes serve Angular index.html
-  app.get("*", (req: Request, res: Response) => {
-    if (!req.path.startsWith("/api") && !req.path.startsWith("/uploads")) {
-      res.sendFile(path.join(angularDistPath, "index.html"));
-    }
-  });
-}
-
-// Socket.IO setup - Koyeb supports this perfectly!
+// Socket.IO setup
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
   cors: {
     origin: process.env.FRONTEND_URL || "http://localhost:4200",
     credentials: true,
   },
   transports: ["websocket", "polling"],
-  // Add for production stability
   pingTimeout: 60000,
   pingInterval: 25000,
 });
@@ -72,7 +55,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/rooms", roomRoutes);
 
-// Health check - Koyeb uses this for monitoring
+// Health check
 app.get("/api/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
@@ -90,7 +73,6 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  // Only log in development
   if (process.env.NODE_ENV !== "production") {
     console.log(`🚀 Server running on port ${PORT}`);
   }
