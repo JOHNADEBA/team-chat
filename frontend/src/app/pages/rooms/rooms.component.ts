@@ -7,11 +7,12 @@ import { ApiService } from '../../services/api.service';
 import { Room, User } from '../../models/types';
 import { take, debounceTime, distinctUntilChanged, switchMap, finalize } from 'rxjs';
 import { Subject } from 'rxjs';
+import { NoticeBannerComponent } from '../../components/notice-banner/notice-banner.component';
 
 @Component({
   selector: 'app-rooms',
   standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
+  imports: [CommonModule, RouterModule, FormsModule, NoticeBannerComponent],
   templateUrl: './rooms.component.html',
   styleUrls: ['./rooms.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

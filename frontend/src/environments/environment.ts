@@ -1,5 +1,6 @@
 export const environment = {
   production: false,
-  apiUrl: 'https://team-chat-z7th.onrender.com/api',
-  socketUrl: 'https://team-chat-z7th.onrender.com',
+  apiUrl: 'http://localhost:3001/api',
+  socketUrl: 'http://localhost:3001',
 };
+// http://localhost:3001',

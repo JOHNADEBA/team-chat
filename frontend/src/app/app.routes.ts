@@ -1,16 +1,31 @@
 import { Routes } from '@angular/router';
+import { inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService } from './services/auth.service';
+import { map, take } from 'rxjs/operators';
 import { authGuard } from './guards/auth.guard';
+
+// Add this new guard
+export const redirectIfAuthenticated = () => {
+  const authService = inject(AuthService);
+  const router = inject(Router);
+
+  return authService.user$.pipe(
+    take(1),
+    map((user) => {
+      if (user) {
+        return router.createUrlTree(['/rooms']);
+      }
+      return true;
+    }),
+  );
+};
 
 export const routes: Routes = [
   {
     path: 'login',
     loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent),
-  },
-  {
-    path: 'profile/:id',
-    loadComponent: () =>
-      import('./pages/profile/profile.component').then((m) => m.ProfileComponent),
-    canActivate: [authGuard],
+    canActivate: [redirectIfAuthenticated], // ADD THIS!
   },
   {
     path: 'rooms',
@@ -26,9 +41,5 @@ export const routes: Routes = [
     path: '',
     redirectTo: '/login',
     pathMatch: 'full',
-  },
-  {
-    path: '**',
-    redirectTo: '/login',
   },
 ];

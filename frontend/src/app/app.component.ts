@@ -1,6 +1,5 @@
-import { Component, OnInit } from '@angular/core';
-import { RouterOutlet, Router } from '@angular/router';
-import { AuthService } from './services/auth.service';
+import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 
 @Component({
   selector: 'app-root',
@@ -8,17 +7,4 @@ import { AuthService } from './services/auth.service';
   imports: [RouterOutlet],
   template: `<router-outlet></router-outlet>`,
 })
-export class AppComponent implements OnInit {
-  constructor(
-    private authService: AuthService,
-    private router: Router,
-  ) {}
-
-  ngOnInit() {
-    if (this.authService.isAuthenticated()) {
-      this.router.navigate(['/rooms']);
-    } else {
-      this.router.navigate(['/login']);
-    }
-  }
-}
+export class AppComponent {}
