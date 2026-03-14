@@ -7,7 +7,6 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   NgZone,
-  AfterViewChecked,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -27,7 +26,7 @@ import { Subject, Subscription } from 'rxjs';
   styleUrls: ['./chat.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
+export class ChatComponent implements OnInit, OnDestroy {
   @ViewChild('messageContainer') private messageContainer!: ElementRef;
 
   roomId: string = '';
@@ -52,7 +51,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   // Scroll management
   private shouldAutoScroll = true;
   private isNearBottom = true;
-  private lastMessageCount = 0;
+  private pendingMessages = new Map<string, Message>(); // Track optimistic messages
 
   private searchSubject = new Subject<string>();
   private subscriptions: Subscription[] = [];
@@ -65,7 +64,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     private api: ApiService,
     private socket: SocketService,
     private cdr: ChangeDetectorRef,
-    private ngZone: NgZone, // Inject NgZone
+    private ngZone: NgZone,
   ) {
     this.setupSearch();
   }
@@ -118,14 +117,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.subscriptions.push(userSub);
   }
 
-  ngAfterViewChecked() {
-    // Auto-scroll only if user is near bottom AND we have new messages
-    if (this.shouldAutoScroll && this.messages.length > this.lastMessageCount) {
-      this.scrollToBottom();
-      this.lastMessageCount = this.messages.length;
-    }
-  }
-
   ngOnDestroy() {
     this.subscriptions.forEach((sub) => sub.unsubscribe());
     this.destroy$.next();
@@ -138,10 +129,8 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   onScroll() {
     if (!this.messageContainer) return;
-
     const element = this.messageContainer.nativeElement;
-    const threshold = 150; // pixels from bottom
-
+    const threshold = 150;
     this.isNearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
     this.shouldAutoScroll = this.isNearBottom;
   }
@@ -162,16 +151,12 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       .subscribe({
         next: (room) => {
           this.room = room;
-
-          // Sort messages by createdAt in ascending order (oldest first)
           this.messages = (room.messages || []).sort(
             (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
           );
-          this.lastMessageCount = this.messages.length;
 
           this.socket.connect().then(() => {
             this.socket.joinRoom(this.roomId);
-            this.shouldAutoScroll = true;
             this.scrollToBottom();
           });
 
@@ -183,63 +168,74 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       });
 
     this.subscriptions.push(loadSub);
-
-    setTimeout(() => {
-      if (this.loading) {
-        this.loading = false;
-        this.cdr.markForCheck();
-      }
-    }, 5000);
   }
 
   setupSocket() {
-    // Method 1: Using NgZone to run socket events inside Angular zone
+    // Handle new messages - OPTIMIZED
     const messageSub = this.socket.onNewMessage().subscribe((message) => {
-      // Run inside NgZone to ensure change detection works with OnPush
       this.ngZone.run(() => {
-        if (message.roomId === this.roomId) {
-          const exists = this.messages.some((m) => m.id === message.id);
-          if (!exists) {
-            // Add new message to the end (bottom) of the list
-            this.messages = [...this.messages, message];
+        if (message.roomId !== this.roomId) return;
 
-            // Method 2: Force immediate change detection (backup method)
-            this.cdr.markForCheck(); // Mark as dirty
-            this.cdr.detectChanges(); // Force immediate check (safe here)
+        // Check if this message already exists (including optimistic ones)
+        const existingIndex = this.messages.findIndex(
+          (m) =>
+            m.id === message.id ||
+            (m.id.startsWith('temp-') &&
+              m.content === message.content &&
+              m.userId === message.userId),
+        );
 
-            // Auto-scroll if user was near bottom
-            if (this.isNearBottom) {
-              setTimeout(() => this.scrollToBottom(), 50);
+        if (existingIndex === -1) {
+          // New message - add it
+          this.messages = [...this.messages, message];
+
+          // Remove any matching optimistic message
+          this.pendingMessages.forEach((_, tempId) => {
+            if (tempId.startsWith('temp-')) {
+              this.messages = this.messages.filter((m) => m.id !== tempId);
+              this.pendingMessages.delete(tempId);
             }
+          });
+
+          // Single change detection
+          this.cdr.markForCheck();
+
+          if (this.isNearBottom) {
+            setTimeout(() => this.scrollToBottom(), 50);
           }
         }
       });
     });
     this.subscriptions.push(messageSub);
 
-    // Listen for user joined
+    // Optimized user joined - DON'T reload entire room
     const joinedSub = this.socket.onUserJoined().subscribe(({ userId }) => {
       this.ngZone.run(() => {
-        this.loadRoom();
+        // Just fetch updated member list, not entire room
+        this.api
+          .getRoom(this.roomId)
+          .pipe(take(1))
+          .subscribe((room) => {
+            this.room = room;
+            this.cdr.markForCheck();
+          });
       });
     });
     this.subscriptions.push(joinedSub);
 
-    // Listen for user left
+    // Optimized user left
     const leftSub = this.socket.onUserLeft().subscribe(({ userId }) => {
       this.ngZone.run(() => {
-        this.loadRoom();
+        this.api
+          .getRoom(this.roomId)
+          .pipe(take(1))
+          .subscribe((room) => {
+            this.room = room;
+            this.cdr.markForCheck();
+          });
       });
     });
     this.subscriptions.push(leftSub);
-
-    // Listen for errors
-    const errorSub = this.socket.onError().subscribe(({ message }) => {
-      this.ngZone.run(() => {
-        console.error('Socket error:', message);
-      });
-    });
-    this.subscriptions.push(errorSub);
   }
 
   async sendMessage() {
@@ -248,7 +244,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     const messageContent = this.newMessage;
     const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
 
-    // Create optimistic message for instant UI update
+    // Create optimistic message
     const optimisticMessage: Message = {
       id: tempId,
       content: messageContent,
@@ -263,35 +259,29 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       },
     };
 
-    // Optimistically add to UI
+    // Track optimistic message
+    this.pendingMessages.set(tempId, optimisticMessage);
+
+    // Add to UI
     this.messages = [...this.messages, optimisticMessage];
     this.newMessage = '';
     this.sending = true;
 
-    // Force view update
+    // Single change detection
     this.cdr.markForCheck();
-    this.cdr.detectChanges();
     this.scrollToBottom();
 
     try {
-      // Ensure socket is connected
       if (!this.socket.isConnected()) {
         await this.socket.connect();
       }
-
-      // Send actual message
       await this.socket.sendMessage(this.roomId, messageContent);
-
-      // Message sent successfully, we'll get the real message via socket
-      // and can remove the optimistic one if needed
     } catch (error) {
-      // Remove optimistic message on error
+      // Remove on error
       this.messages = this.messages.filter((m) => m.id !== tempId);
-
-      // Restore the message text
+      this.pendingMessages.delete(tempId);
       this.newMessage = messageContent;
-
-      // Show error (you could add a toast notification here)
+      this.cdr.markForCheck();
       alert('Failed to send message. Please try again.');
     } finally {
       this.sending = false;
@@ -331,10 +321,17 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       )
       .subscribe({
         next: () => {
-          this.loadRoom();
-          this.userSearchQuery = '';
-          this.searchResults = [];
-          this.showAddMembersModal = false;
+          // Refresh room data
+          this.api
+            .getRoom(this.roomId)
+            .pipe(take(1))
+            .subscribe((room) => {
+              this.room = room;
+              this.userSearchQuery = '';
+              this.searchResults = [];
+              this.showAddMembersModal = false;
+              this.cdr.markForCheck();
+            });
         },
         error: (err) => {
           console.error('Failed to add user:', err);
@@ -342,13 +339,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       });
 
     this.subscriptions.push(addSub);
-
-    setTimeout(() => {
-      if (this.addingUser === userId) {
-        this.addingUser = null;
-        this.cdr.markForCheck();
-      }
-    }, 5000);
   }
 
   goBack() {
@@ -381,12 +371,10 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     setTimeout(() => {
       try {
         if (this.messageContainer) {
-          const element = this.messageContainer.nativeElement;
-          element.scrollTop = element.scrollHeight;
+          this.messageContainer.nativeElement.scrollTop =
+            this.messageContainer.nativeElement.scrollHeight;
         }
-      } catch (err) {
-        console.error('Scroll error:', err);
-      }
+      } catch (err) {}
     }, 50);
   }
 }
