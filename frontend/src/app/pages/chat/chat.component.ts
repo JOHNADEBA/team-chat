@@ -100,6 +100,17 @@ export class ChatComponent implements OnInit, OnDestroy {
     this.subscriptions.push(searchSub);
   }
 
+  private scrollToBottom() {
+    setTimeout(() => {
+      try {
+        if (this.messageContainer) {
+          this.messageContainer.nativeElement.scrollTop =
+            this.messageContainer.nativeElement.scrollHeight;
+        }
+      } catch (err) {}
+    }, 50);
+  }
+
   ngOnInit() {
     const routeSub = this.route.params.pipe(take(1)).subscribe((params) => {
       this.roomId = params['roomId'];
@@ -365,16 +376,5 @@ export class ChatComponent implements OnInit, OnDestroy {
 
   logout() {
     this.authService.logout();
-  }
-
-  private scrollToBottom() {
-    setTimeout(() => {
-      try {
-        if (this.messageContainer) {
-          this.messageContainer.nativeElement.scrollTop =
-            this.messageContainer.nativeElement.scrollHeight;
-        }
-      } catch (err) {}
-    }, 50);
   }
 }
