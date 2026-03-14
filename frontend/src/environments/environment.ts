@@ -1,6 +1,6 @@
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:3001/api',
-  socketUrl: 'http://localhost:3001',
+  apiUrl: 'https://team-chat-gamma.vercel.app/api',
+  socketUrl: 'https://team-chat-gamma.vercel.app',
 };
 // http://localhost:3001',
