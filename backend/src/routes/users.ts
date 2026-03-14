@@ -179,7 +179,7 @@ router.post(
       }
 
       // Generate URL for the uploaded file
-      const baseUrl = process.env.BASE_URL || "http://localhost:3001";
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
       const avatarUrl = `${baseUrl}/uploads/avatars/${req.file.filename}`;
 
       // Update user in database
