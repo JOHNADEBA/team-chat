@@ -34,53 +34,45 @@ export class SocketService {
       reconnectionDelay: 1000,
     });
 
-    // Only log in development mode
+    // Setup event listeners
+    this.setupEventListeners();
+
+    // Only log in development
     if (!environment.production) {
       this.socket.on('connect', () => {
-        console.log('✅ Socket connected');
+        // Development only
       });
 
       this.socket.on('disconnect', (reason) => {
-        console.log('❌ Socket disconnected:', reason);
+        // Development only
       });
 
       this.socket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
-      });
-
-      this.socket.on('new-message', (message: Message) => {
-        console.log('📩 New message received:', message);
-        this.messageSubject.next(message);
-      });
-
-      this.socket.on('user-joined', (data: { userId: string }) => {
-        console.log('👤 User joined:', data);
-        this.userJoinedSubject.next(data);
-      });
-
-      this.socket.on('user-left', (data: { userId: string }) => {
-        console.log('👋 User left:', data);
-        this.userLeftSubject.next(data);
-      });
-    } else {
-      // Production: Just forward events without logging
-      this.socket.on('new-message', (message: Message) => {
-        this.messageSubject.next(message);
-      });
-
-      this.socket.on('user-joined', (data: { userId: string }) => {
-        this.userJoinedSubject.next(data);
-      });
-
-      this.socket.on('user-left', (data: { userId: string }) => {
-        this.userLeftSubject.next(data);
+        // Development only
       });
     }
 
-    // Always log errors (they're important even in production)
+    // Always log errors (important even in production)
     this.socket.on('error', (data: { message: string }) => {
       console.error('Socket error:', data.message);
       this.errorSubject.next(data);
+    });
+  }
+
+  // Setup all event listeners
+  private setupEventListeners(): void {
+    if (!this.socket) return;
+
+    this.socket.on('new-message', (message: Message) => {
+      this.messageSubject.next(message);
+    });
+
+    this.socket.on('user-joined', (data: { userId: string }) => {
+      this.userJoinedSubject.next(data);
+    });
+
+    this.socket.on('user-left', (data: { userId: string }) => {
+      this.userLeftSubject.next(data);
     });
   }
 
@@ -90,6 +82,7 @@ export class SocketService {
 
   disconnect() {
     if (this.socket) {
+      this.socket.removeAllListeners();
       this.socket.disconnect();
       this.socket = null;
     }
@@ -97,16 +90,7 @@ export class SocketService {
 
   joinRoom(roomId: string) {
     if (!this.socket?.connected) {
-      // Only warn in development
-      if (!environment.production) {
-        console.warn('Socket not connected, cannot join room');
-      }
       return;
-    }
-
-    // Only log in development
-    if (!environment.production) {
-      console.log(`🚪 Joining room: ${roomId}`);
     }
 
     this.socket.emit('join-room', { roomId });
@@ -115,26 +99,12 @@ export class SocketService {
   leaveRoom(roomId: string) {
     if (!this.socket?.connected) return;
 
-    // Only log in development
-    if (!environment.production) {
-      console.log(`🚪 Leaving room: ${roomId}`);
-    }
-
     this.socket.emit('leave-room', roomId);
   }
 
   sendMessage(roomId: string, content: string) {
     if (!this.socket?.connected) {
-      // Only warn in development
-      if (!environment.production) {
-        console.warn('Socket not connected, cannot send message');
-      }
       return;
-    }
-
-    // Only log in development
-    if (!environment.production) {
-      console.log(`📤 Sending message to room ${roomId}`);
     }
 
     this.socket.emit('send-message', { roomId, content });

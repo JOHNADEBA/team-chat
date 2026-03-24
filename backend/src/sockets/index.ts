@@ -26,7 +26,7 @@ export const configureSockets = (
         socket.userId = payload.userId || payload.sub;
         next();
       } catch (e) {
-          next(new Error("Invalid token"));
+        next(new Error("Invalid token"));
       }
     } catch (err) {
       next(new Error("Authentication failed"));
@@ -34,7 +34,6 @@ export const configureSockets = (
   });
 
   io.on("connection", (socket: SocketWithUser) => {
-   
     // Join room
     socket.on("join-room", async ({ roomId }) => {
       if (!socket.userId) return;
@@ -49,7 +48,7 @@ export const configureSockets = (
 
       // Join new room
       socket.join(roomId);
-     
+
       // Send recent messages
       const messages = await prisma.message.findMany({
         where: { roomId },
@@ -75,7 +74,6 @@ export const configureSockets = (
     socket.on("send-message", async ({ roomId, content }) => {
       if (!socket.userId) return;
 
-     
       try {
         // Save message to database
         const message = await prisma.message.create({
@@ -91,11 +89,14 @@ export const configureSockets = (
           },
         });
 
-     
         // Broadcast to ALL users in the room (including sender)
-        io.to(roomId).emit("new-message", message);
+        // NEW - Better pattern
+        io.to(roomId).emit("new-message", {
+          ...message,
+          isOptimistic: false, // optional
+          tempId: null,
+        });
       } catch (error) {
-        console.error("❌ Error saving message:", error);
         socket.emit("error", { message: "Failed to send message" });
       }
     });
@@ -106,10 +107,9 @@ export const configureSockets = (
 
       socket.leave(roomId);
       socket.to(roomId).emit("user-left", { userId: socket.userId });
-       });
+    });
 
     // Handle disconnection
-    socket.on("disconnect", () => {
-       });
+    socket.on("disconnect", () => {});
   });
 };

@@ -239,6 +239,7 @@
   padding: 20px;
   display: flex;
   flex-direction: column;
+  scroll-behavior: smooth;
 
   // Mobile fixes
   @media (max-width: 768px) {
@@ -260,16 +261,21 @@
 .message-wrapper {
   display: flex;
   margin-bottom: 4px;
-  max-width: 70%;
+  width: 100%;
+  max-width: 100%;
 
   &.own-message {
-    margin-left: auto;
     justify-content: flex-end;
+  }
+
+  // Non-own messages stay on left
+  &:not(.own-message) {
+    justify-content: flex-start;
   }
 
   // Mobile fixes
   @media (max-width: 768px) {
-    max-width: 85%; // Allow more width on mobile
+    max-width: 100%; // Allow more width on mobile
   }
 }
 
@@ -278,13 +284,36 @@
   border-radius: 18px;
   padding: 10px 14px;
   box-shadow: var(--shadow-sm);
-  word-wrap: break-word; // CRITICAL: Prevents long words from overflowing
+  word-wrap: break-word;
   overflow-wrap: break-word;
-  max-width: 100%;
+  max-width: 70%;
+  position: relative;
 
   .own-message & {
     background-color: var(--primary);
     color: white;
+  }
+
+  // Add message tail for better visual separation
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 8px;
+    width: 0;
+    height: 0;
+    border: 6px solid transparent;
+  }
+
+  .own-message &::after {
+    right: -8px;
+    border-left-color: var(--primary);
+    border-right: 0;
+  }
+
+  &:not(.own-message) &::after {
+    left: -8px;
+    border-right-color: white;
+    border-left: 0;
   }
 }
 
@@ -317,7 +346,7 @@
   overflow-wrap: break-word;
 
   @media (max-width: 768px) {
-    font-size: 1rem; // Better mobile readability
+    font-size: 1rem;
   }
 }
 

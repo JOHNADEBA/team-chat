@@ -17,6 +17,8 @@ import { SocketService } from '../../services/socket.service';
 import { Room, Message, User } from '../../models/types';
 import { take, debounceTime, distinctUntilChanged, switchMap, finalize } from 'rxjs';
 import { Subject, Subscription } from 'rxjs';
+import { environment } from '../../../environments/environment';
+// import { environment } from '../../environments/environment';
 
 @Component({
   selector: 'app-chat',
@@ -51,7 +53,7 @@ export class ChatComponent implements OnInit, OnDestroy {
   // Scroll management
   private shouldAutoScroll = true;
   private isNearBottom = true;
-  private pendingMessages = new Map<string, Message>(); // Track optimistic messages
+  private pendingOptimisticIds = new Set<string>(); // Track optimistic message IDs
 
   private searchSubject = new Subject<string>();
   private subscriptions: Subscription[] = [];
@@ -91,7 +93,9 @@ export class ChatComponent implements OnInit, OnDestroy {
           this.cdr.markForCheck();
         },
         error: (err) => {
-          console.error('Search error:', err);
+          if (!environment.production) {
+            console.error('Search error:', err);
+          }
           this.searching = false;
           this.cdr.markForCheck();
         },
@@ -102,13 +106,14 @@ export class ChatComponent implements OnInit, OnDestroy {
 
   private scrollToBottom() {
     setTimeout(() => {
-      try {
-        if (this.messageContainer) {
-          this.messageContainer.nativeElement.scrollTop =
-            this.messageContainer.nativeElement.scrollHeight;
-        }
-      } catch (err) {}
-    }, 50);
+      if (this.messageContainer?.nativeElement) {
+        const container = this.messageContainer.nativeElement;
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth',
+        });
+      }
+    }, 30);
   }
 
   ngOnInit() {
@@ -160,16 +165,25 @@ export class ChatComponent implements OnInit, OnDestroy {
         }),
       )
       .subscribe({
-        next: (room) => {
+        next: async (room) => {
           this.room = room;
           this.messages = (room.messages || []).sort(
             (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
           );
 
-          this.socket.connect().then(() => {
+          try {
+            // Ensure connection is established
+            await this.socket.connect();
+            
+            // Small delay to ensure connection is stable
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             this.socket.joinRoom(this.roomId);
+
             this.scrollToBottom();
-          });
+          } catch (error) {
+            console.error('Failed to connect socket:', error);
+          }
 
           this.cdr.markForCheck();
         },
@@ -182,59 +196,53 @@ export class ChatComponent implements OnInit, OnDestroy {
   }
 
   setupSocket() {
-    // Handle new messages - OPTIMIZED
-    const messageSub = this.socket.onNewMessage().subscribe((message) => {
+    const messageSub = this.socket.onNewMessage().subscribe((receivedMessage: Message) => {
       this.ngZone.run(() => {
-        if (message.roomId !== this.roomId) return;
+        if (receivedMessage.roomId !== this.roomId) return;
 
-        // Check if this message already exists (including optimistic ones)
-        const existingIndex = this.messages.findIndex(
+        const isRealMessage = !receivedMessage.id?.startsWith('temp-');
+        const existingIndex = this.messages.findIndex((m) => m.id === receivedMessage.id);
+        const optimisticIndex = this.messages.findIndex(
           (m) =>
-            m.id === message.id ||
-            (m.id.startsWith('temp-') &&
-              m.content === message.content &&
-              m.userId === message.userId),
+            m.id?.startsWith('temp-') &&
+            m.content === receivedMessage.content &&
+            m.userId === receivedMessage.userId,
         );
 
-        if (existingIndex === -1) {
-          // New message - add it
-          this.messages = [...this.messages, message];
+        if (existingIndex !== -1) {
+          return;
+        }
 
-          // Remove any matching optimistic message
-          this.pendingMessages.forEach((_, tempId) => {
-            if (tempId.startsWith('temp-')) {
-              this.messages = this.messages.filter((m) => m.id !== tempId);
-              this.pendingMessages.delete(tempId);
-            }
-          });
+        if (optimisticIndex !== -1 && isRealMessage) {
+          this.messages[optimisticIndex] = receivedMessage;
+          this.messages = [...this.messages];
+          this.pendingOptimisticIds.delete(this.messages[optimisticIndex].id);
+        } else {
+          this.messages = [...this.messages, receivedMessage];
+        }
 
-          // Single change detection
-          this.cdr.markForCheck();
+        this.cdr.detectChanges();
 
-          if (this.isNearBottom) {
-            setTimeout(() => this.scrollToBottom(), 50);
-          }
+        if (this.isNearBottom) {
+          setTimeout(() => this.scrollToBottom(), 30);
         }
       });
     });
     this.subscriptions.push(messageSub);
 
-    // Optimized user joined - DON'T reload entire room
     const joinedSub = this.socket.onUserJoined().subscribe(({ userId }) => {
       this.ngZone.run(() => {
-        // Just fetch updated member list, not entire room
         this.api
           .getRoom(this.roomId)
           .pipe(take(1))
           .subscribe((room) => {
             this.room = room;
-            this.cdr.markForCheck();
+            this.cdr.detectChanges();
           });
       });
     });
     this.subscriptions.push(joinedSub);
 
-    // Optimized user left
     const leftSub = this.socket.onUserLeft().subscribe(({ userId }) => {
       this.ngZone.run(() => {
         this.api
@@ -242,7 +250,7 @@ export class ChatComponent implements OnInit, OnDestroy {
           .pipe(take(1))
           .subscribe((room) => {
             this.room = room;
-            this.cdr.markForCheck();
+            this.cdr.detectChanges();
           });
       });
     });
@@ -252,13 +260,12 @@ export class ChatComponent implements OnInit, OnDestroy {
   async sendMessage() {
     if (!this.newMessage.trim() || this.sending) return;
 
-    const messageContent = this.newMessage;
-    const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    const content = this.newMessage.trim();
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
-    // Create optimistic message
     const optimisticMessage: Message = {
       id: tempId,
-      content: messageContent,
+      content,
       userId: this.currentUserId!,
       roomId: this.roomId,
       createdAt: new Date(),
@@ -270,33 +277,29 @@ export class ChatComponent implements OnInit, OnDestroy {
       },
     };
 
-    // Track optimistic message
-    this.pendingMessages.set(tempId, optimisticMessage);
-
-    // Add to UI
     this.messages = [...this.messages, optimisticMessage];
+    this.pendingOptimisticIds.add(tempId);
     this.newMessage = '';
     this.sending = true;
-
-    // Single change detection
-    this.cdr.markForCheck();
+    this.cdr.detectChanges();
     this.scrollToBottom();
 
     try {
       if (!this.socket.isConnected()) {
         await this.socket.connect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      await this.socket.sendMessage(this.roomId, messageContent);
+
+      this.socket.sendMessage(this.roomId, content);
     } catch (error) {
-      // Remove on error
       this.messages = this.messages.filter((m) => m.id !== tempId);
-      this.pendingMessages.delete(tempId);
-      this.newMessage = messageContent;
-      this.cdr.markForCheck();
+      this.pendingOptimisticIds.delete(tempId);
+      this.newMessage = content;
+      this.cdr.detectChanges();
       alert('Failed to send message. Please try again.');
     } finally {
       this.sending = false;
-      this.cdr.markForCheck();
+      this.cdr.detectChanges();
     }
   }
 
@@ -345,7 +348,9 @@ export class ChatComponent implements OnInit, OnDestroy {
             });
         },
         error: (err) => {
-          console.error('Failed to add user:', err);
+          if (!environment.production) {
+            console.error('Failed to add user:', err);
+          }
         },
       });
 
