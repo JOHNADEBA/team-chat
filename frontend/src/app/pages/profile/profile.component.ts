@@ -52,7 +52,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.route.params.pipe(take(1)).subscribe((params) => {
-      this.userId = params['id'];
+      this.userId = params['userId'];
       this.loadProfile();
       this.loadStats();
     });

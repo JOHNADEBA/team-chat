@@ -25,7 +25,7 @@ export const routes: Routes = [
   {
     path: 'login',
     loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent),
-    canActivate: [redirectIfAuthenticated], // ADD THIS!
+    canActivate: [redirectIfAuthenticated],
   },
   {
     path: 'rooms',
@@ -38,8 +38,24 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'profile/:userId',
+    loadComponent: () =>
+      import('./pages/profile/profile.component').then((m) => m.ProfileComponent),
+    canActivate: [authGuard],
+  },
+  {
     path: '',
     redirectTo: '/login',
+    pathMatch: 'full',
+  },
+  {
+    path: '404',
+    loadComponent: () =>
+      import('./pages/not-found/not-found.component').then((m) => m.NotFoundComponent),
+  },
+  {
+    path: '**',
+    redirectTo: '/404',
     pathMatch: 'full',
   },
 ];
